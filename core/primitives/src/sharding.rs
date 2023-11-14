@@ -925,6 +925,8 @@ pub struct EncodedShardChunkV2 {
 pub enum EncodedShardChunk {
     V1(EncodedShardChunkV1),
     V2(EncodedShardChunkV2),
+    #[cfg(feature = "data-availability")]
+    V3(EncodedShardChunkV3),
 }
 
 impl EncodedShardChunk {

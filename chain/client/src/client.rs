@@ -827,6 +827,7 @@ impl Client {
             validator_signer.validator_id()
         );
 
+        // TODO: could create commitment to encoded blob here
         let ret = self.produce_pre_state_root_chunk(
             validator_signer.as_ref(),
             prev_block_hash,
@@ -906,6 +907,9 @@ impl Client {
             &mut self.rs_for_chunk_production,
             protocol_version,
         )?;
+        // TODO: commit to this with DA
+        //#[cfg(feature = "data_availability")]
+        // Commit to encoded_chunk.content().parts
 
         debug!(
             target: "client",
@@ -1849,6 +1853,7 @@ impl Client {
             let last_header = Chain::get_prev_chunk_header(epoch_manager, block, shard_id).unwrap();
             match self.produce_chunk(*block.hash(), &epoch_id, last_header, next_height, shard_id) {
                 Ok(Some((encoded_chunk, merkle_paths, receipts))) => {
+                    // TODO: here we can distribute the commitments
                     self.persist_and_distribute_encoded_chunk(
                         encoded_chunk,
                         merkle_paths,
@@ -1865,6 +1870,7 @@ impl Client {
         }
     }
 
+    // TODO: here we can verify
     pub fn persist_and_distribute_encoded_chunk(
         &mut self,
         encoded_chunk: EncodedShardChunk,

@@ -1897,6 +1897,8 @@ impl ShardsManager {
                 .cloned()
                 .collect();
 
+            // TODO: can try to DAS and disseminate here, or when the chunk is created,
+            // create the commitment to it there
             let partial_encoded_chunk = encoded_chunk
                 .create_partial_encoded_chunk_with_arc_receipts(
                     part_ords,
