@@ -976,6 +976,8 @@ impl ShardsManager {
             return;
         }
 
+        // TODO: we **could** commit here, optimising the merkle verification, but likely a larger
+        // impact on the protocol if replacing with KZG commitments
         let (encoded_merkle_root, merkle_paths) = content.get_merkle_hash_and_paths();
         if header.encoded_merkle_root() != encoded_merkle_root {
             warn!(target: "chunks",
@@ -1039,6 +1041,7 @@ impl ShardsManager {
         num_total_parts: usize,
     ) -> Result<(), Error> {
         if (part.part_ord as usize) < num_total_parts {
+            // TODO: here is the optimisation for encoded parts
             if !verify_path(merkle_root, &part.merkle_proof, &part.part) {
                 return Err(Error::InvalidMerkleProof);
             }
@@ -1079,6 +1082,7 @@ impl ShardsManager {
         }
     }
 
+    // Here more verification
     fn validate_partial_encoded_chunk_forward(
         &mut self,
         forward: &PartialEncodedChunkForwardMsg,
