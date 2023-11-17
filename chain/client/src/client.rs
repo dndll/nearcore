@@ -43,6 +43,9 @@ use near_client_primitives::debug::ChunkProduction;
 use near_client_primitives::types::{
     format_shard_sync_phase_per_shard, Error, ShardSyncDownload, ShardSyncStatus,
 };
+use near_da_erasure_commit::scheme::kzg::FrElement;
+use near_da_erasure_commit::scheme::kzg::KzgCommitmentScheme;
+use near_da_erasure_commit::CommitmentScheme;
 use near_epoch_manager::shard_tracker::ShardTracker;
 use near_epoch_manager::EpochManagerAdapter;
 use near_network::types::{AccountKeys, ChainInfo, PeerManagerMessageRequest, SetChainInfo};
@@ -185,6 +188,9 @@ pub struct Client {
     tier1_accounts_cache: Option<(EpochId, Arc<AccountKeys>)>,
     /// Used when it is needed to create flat storage in background for some shards.
     flat_storage_creator: Option<FlatStorageCreator>,
+    /// Used for commitments to encoded shards
+    /// TODO: feature flag, no option
+    commitment_scheme: Option<KzgCommitmentScheme>,
 }
 
 impl Client {
@@ -325,6 +331,8 @@ impl Client {
             validator_signer.clone(),
             doomslug_threshold_mode,
         );
+
+        let kzg_commitment_scheme = KzgCommitmentScheme::insecure_generate(2048);
         Ok(Self {
             #[cfg(feature = "test_features")]
             adv_produce_blocks: None,
@@ -366,6 +374,7 @@ impl Client {
             chunk_production_info: lru::LruCache::new(PRODUCTION_TIMES_CACHE_SIZE),
             tier1_accounts_cache: None,
             flat_storage_creator,
+            commitment_scheme: Some(kzg_commitment_scheme),
         })
     }
 
@@ -827,7 +836,6 @@ impl Client {
             validator_signer.validator_id()
         );
 
-        // TODO: could create commitment to encoded blob here
         let ret = self.produce_pre_state_root_chunk(
             validator_signer.as_ref(),
             prev_block_hash,
@@ -907,7 +915,8 @@ impl Client {
             &mut self.rs_for_chunk_production,
             protocol_version,
         )?;
-        // TODO: commit to this with DA
+        // TODO: this requires a higher-impact changes
+        // We would here commit to the encode chunk and store the transcript
         //#[cfg(feature = "data_availability")]
         // Commit to encoded_chunk.content().parts
 
@@ -1071,6 +1080,8 @@ impl Client {
     /// All receipts are groupped by receiver_id and hash is calculated
     /// for each such group. Then we merkalize these hashes to calculate
     /// the receipts root.
+    ///
+    /// TODO: here is an optimisation with KZG
     ///
     /// Receipts root is used in the following ways:
     /// 1. Someone who cares about shard will download all the receipts
@@ -1853,7 +1864,9 @@ impl Client {
             let last_header = Chain::get_prev_chunk_header(epoch_manager, block, shard_id).unwrap();
             match self.produce_chunk(*block.hash(), &epoch_id, last_header, next_height, shard_id) {
                 Ok(Some((encoded_chunk, merkle_paths, receipts))) => {
-                    // TODO: here we can distribute the commitments
+                    self.commit_and_distribute_encoded_chunk(&encoded_chunk)
+                        .expect("Failed to KZG");
+
                     self.persist_and_distribute_encoded_chunk(
                         encoded_chunk,
                         merkle_paths,
@@ -1870,7 +1883,6 @@ impl Client {
         }
     }
 
-    // TODO: here we can verify
     pub fn persist_and_distribute_encoded_chunk(
         &mut self,
         encoded_chunk: EncodedShardChunk,
@@ -1893,6 +1905,32 @@ impl Client {
             merkle_paths,
             outgoing_receipts: receipts,
         });
+        Ok(())
+    }
+
+    pub fn commit_and_distribute_encoded_chunk(
+        &mut self,
+        encoded_chunk: &EncodedShardChunk,
+    ) -> Result<(), Error> {
+        // TODO: only do this for da.near
+        if let Some(ref kzg) = self.commitment_scheme {
+            let deref: Vec<u8> = encoded_chunk
+                .content()
+                .parts
+                .iter()
+                .flatten()
+                .cloned()
+                .map(|x| x.into_vec())
+                .flatten()
+                .collect();
+
+            let scalars = KzgCommitmentScheme::scalars(&deref);
+            // TODO: use random X, just testing for now
+            let x = FrElement::one();
+            let commitment = kzg.commit(&scalars.unwrap(), &x);
+        }
+        // TODO: distribute transcript
+        //self.shards_manager_adapter.send(ShardsManagerRequestFromClient::DistributeChunkCommitment { partial_chunk: (), encoded_chunk: (), merkle_paths: (), outgoing_receipts: () }
         Ok(())
     }
 

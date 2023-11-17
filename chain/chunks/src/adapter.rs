@@ -50,4 +50,10 @@ pub enum ShardsManagerRequestFromClient {
     /// proofs, but cannot be marked as complete because the previous block isn't available),
     /// and completes them if so.
     CheckIncompleteChunks(CryptoHash),
+    /// As a chunk producer, distibute the given chunk to other validators, providing
+    /// a valid KZG commitment to the encoded words.
+    DistributeKzgChunk {
+        encoded_chunk: EncodedShardChunk,
+        commitment: near_da_erasure_commit::scheme::kzg::Commitment
+    }
 }

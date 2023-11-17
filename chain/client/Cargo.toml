@@ -56,6 +56,8 @@ near-primitives.workspace = true
 near-store.workspace = true
 near-telemetry.workspace = true
 
+near-da-erasure-commit = { git = "https://github.com/near/rollup-data-availability", branch = "feature/modular-commitments" }
+
 [dev-dependencies]
 assert_matches.workspace = true
 near-actix-test-utils.workspace = true
@@ -100,10 +102,5 @@ nightly = [
   "near-store/nightly",
   "near-telemetry/nightly",
 ]
-sandbox = [
-  "near-client-primitives/sandbox",
-  "near-chain/sandbox",
-]
-new_epoch_sync = [
-  "near-chain/new_epoch_sync"
-]
+sandbox = ["near-client-primitives/sandbox", "near-chain/sandbox"]
+new_epoch_sync = ["near-chain/new_epoch_sync"]

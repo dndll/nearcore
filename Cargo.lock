@@ -841,7 +841,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4114279215a005bc675e386011e594e1d9b800918cea18fcadadcce864a2046b"
 dependencies = [
  "borsh-derive 0.10.3",
- "hashbrown 0.13.2",
+ "hashbrown 0.11.2",
 ]
 
 [[package]]
@@ -3711,6 +3711,7 @@ dependencies = [
  "near-chain-configs",
  "near-chunks-primitives",
  "near-crypto 0.0.0",
+ "near-da-erasure-commit",
  "near-epoch-manager",
  "near-network",
  "near-o11y",
@@ -3887,7 +3888,7 @@ dependencies = [
 [[package]]
 name = "near-da-erasure-commit"
 version = "0.2.3"
-source = "git+https://github.com/near/rollup-data-availability#c55e177977cd88d31cf8b93fb6e889bb54d482de"
+source = "git+https://github.com/near/rollup-data-availability?branch=feature/modular-commitments#5acecf054cacd2c81c62196b8e2bd0d6e99a9217"
 dependencies = [
  "borsh 0.10.3",
  "eyre",

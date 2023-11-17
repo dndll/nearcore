@@ -39,6 +39,9 @@ near-pool.workspace = true
 near-performance-metrics.workspace = true
 near-performance-metrics-macros.workspace = true
 
+# TODO: better place for this
+near-da-erasure-commit = { git = "https://github.com/near/rollup-data-availability", branch = "feature/modular-commitments" }
+
 [dev-dependencies]
 assert_matches.workspace = true
 

@@ -1847,6 +1847,7 @@ impl ShardsManager {
         .map_err(|err| err.into())
     }
 
+    // TODO: we maybe move the commit logic here
     pub fn distribute_encoded_chunk(
         &mut self,
         partial_chunk: PartialEncodedChunk,
@@ -1927,6 +1928,73 @@ impl ShardsManager {
         Ok(())
     }
 
+    fn distribute_kzg_chunk(
+        &mut self,
+        encoded_chunk: EncodedShardChunk,
+        commitment: near_da_erasure_commit::scheme::kzg::Commitment,
+    ) -> Result<(), Error> {
+        let shard_id = encoded_chunk.shard_id();
+        let _timer = metrics::DISTRIBUTE_ENCODED_CHUNK_TIME
+            .with_label_values(&[&shard_id.to_string()])
+            .start_timer();
+        // TODO: if the number of validators exceeds the number of parts, this logic must be changed
+        let chunk_header = encoded_chunk.cloned_header();
+        let prev_block_hash = chunk_header.prev_block_hash();
+        let _span = tracing::debug_span!(
+            target: "client",
+            "distribute_encoded_chunk",
+            ?prev_block_hash,
+            ?shard_id)
+        .entered();
+
+        let mut block_producer_mapping = HashMap::new();
+        let epoch_id = self.epoch_manager.get_epoch_id_from_prev_block(&prev_block_hash)?;
+        for part_ord in 0..self.rs.total_shard_count() {
+            let part_ord = part_ord as u64;
+            let to_whom = self.epoch_manager.get_part_owner(&epoch_id, part_ord).unwrap();
+
+            let entry = block_producer_mapping.entry(to_whom).or_insert_with(Vec::new);
+            entry.push(part_ord);
+        }
+
+        // FIXME: decide how to determine if validators care or not, maybe some DAS registry?
+        for (to_whom, part_ords) in block_producer_mapping {
+            let part_receipt_proofs = receipt_proofs
+                .iter()
+                .filter(|proof| {
+                    let proof_shard_id = proof.1.to_shard_id;
+                    cares_about_shard_this_or_next_epoch(
+                        Some(&to_whom),
+                        &prev_block_hash,
+                        proof_shard_id,
+                        false,
+                        &self.shard_tracker,
+                    )
+                })
+                .cloned()
+                .collect();
+
+            // TODO: can try to DAS and disseminate here, or when the chunk is created,
+            // create the commitment to it there
+            let partial_encoded_chunk = encoded_chunk
+                .create_partial_encoded_chunk_with_arc_receipts(
+                    part_ords,
+                    part_receipt_proofs,
+                    &merkle_paths,
+                );
+
+            if Some(&to_whom) != self.me.as_ref() {
+                self.peer_manager_adapter.send(PeerManagerMessageRequest::NetworkRequests(
+                    NetworkRequests::PartialEncodedChunkMessage {
+                        account_id: to_whom.clone(),
+                        partial_encoded_chunk,
+                    },
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub fn handle_client_request(&mut self, request: ShardsManagerRequestFromClient) {
         let _span = tracing::debug_span!(
             target: "chunks",
@@ -1968,6 +2036,11 @@ impl ShardsManager {
             } => self.request_chunks_for_orphan(chunks_to_request, &epoch_id, ancestor_hash),
             ShardsManagerRequestFromClient::CheckIncompleteChunks(prev_block_hash) => {
                 self.check_incomplete_chunks(&prev_block_hash)
+            }
+            ShardsManagerRequestFromClient::DistributeKzgChunk { encoded_chunk, commitment } => {
+                if let Err(e) = self.distribute_kzg_chunk(encoded_chunk, commitment) {
+                    warn!(target: "chunks", "Error distributing kzg chunk: {:?}", e);
+                }
             }
         }
     }
