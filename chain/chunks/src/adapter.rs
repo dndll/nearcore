@@ -52,7 +52,7 @@ pub enum ShardsManagerRequestFromClient {
     CheckIncompleteChunks(CryptoHash),
     /// As a chunk producer, distibute the given chunk to other validators, providing
     /// a valid KZG commitment to the encoded words.
-    DistributeKzgChunk {
+    DistributeChunkCommitment {
         encoded_chunk: EncodedShardChunk,
         commitment: near_da_erasure_commit::scheme::kzg::Commitment
     }

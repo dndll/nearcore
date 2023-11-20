@@ -332,6 +332,7 @@ impl Client {
             doomslug_threshold_mode,
         );
 
+        // FIXME: Insecure trusted setup for now
         let kzg_commitment_scheme = KzgCommitmentScheme::insecure_generate(2048);
         Ok(Self {
             #[cfg(feature = "test_features")]
@@ -915,10 +916,6 @@ impl Client {
             &mut self.rs_for_chunk_production,
             protocol_version,
         )?;
-        // TODO: this requires a higher-impact changes
-        // We would here commit to the encode chunk and store the transcript
-        //#[cfg(feature = "data_availability")]
-        // Commit to encoded_chunk.content().parts
 
         debug!(
             target: "client",
@@ -1864,8 +1861,9 @@ impl Client {
             let last_header = Chain::get_prev_chunk_header(epoch_manager, block, shard_id).unwrap();
             match self.produce_chunk(*block.hash(), &epoch_id, last_header, next_height, shard_id) {
                 Ok(Some((encoded_chunk, merkle_paths, receipts))) => {
-                    self.commit_and_distribute_encoded_chunk(&encoded_chunk)
-                        .expect("Failed to KZG");
+                    // TODO: #[feature = "data_availability"]
+                    self.commit_and_distribute_encoded_chunk(&encoded_chunk, &receipts)
+                        .expect("Failed to KZG"); // TODO: no panic
 
                     self.persist_and_distribute_encoded_chunk(
                         encoded_chunk,
@@ -1911,8 +1909,28 @@ impl Client {
     pub fn commit_and_distribute_encoded_chunk(
         &mut self,
         encoded_chunk: &EncodedShardChunk,
+        merkle_paths: &[MerklePath],
+        receipts: &[Receipt],
+        validator_id: AccountId,
     ) -> Result<(), Error> {
-        // TODO: only do this for da.near
+        // TODO: we could modify this only to commit to chunks for a specific receiver 
+        // let da_receipts: Vec<_> = receipts
+        //     .iter()
+        //     .filter_map(|r| r.receiver_id == "da.near".parse().ok()) // FIXME: DA contract hack
+        //     .cloned()
+        //     .collect();
+        // If we do this, we need to find the specific parts that match the receipts and commit
+        // those only
+        //
+        // TODO: something like `part_ords_to_parts`/`partial_encoded_chunk` -> commit -> distribute parts
+        let (_, partial_chunk) = decode_encoded_chunk(
+            encoded_chunk,
+            merkle_paths.clone(),
+            Some(&validator_id),
+            self.epoch_manager.as_ref(),
+            &self.shard_tracker,
+        )?;
+
         if let Some(ref kzg) = self.commitment_scheme {
             let deref: Vec<u8> = encoded_chunk
                 .content()
@@ -1928,9 +1946,16 @@ impl Client {
             // TODO: use random X, just testing for now
             let x = FrElement::one();
             let commitment = kzg.commit(&scalars.unwrap(), &x);
+
+            // TODO: persist commitment
+            //
+            self.shards_manager_adapter.send(
+                ShardsManagerRequestFromClient::DistributeChunkCommitment {
+                    encoded_chunk,
+                    commitment,
+                },
+            );
         }
-        // TODO: distribute transcript
-        //self.shards_manager_adapter.send(ShardsManagerRequestFromClient::DistributeChunkCommitment { partial_chunk: (), encoded_chunk: (), merkle_paths: (), outgoing_receipts: () }
         Ok(())
     }
 
